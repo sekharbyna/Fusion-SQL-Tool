@@ -115,6 +115,33 @@ button[kind="headerNoPadding"] svg,
     background: transparent !important;
 }
 
+
+/* ===== FORCE SIDEBAR ALWAYS OPEN ===== */
+section[data-testid="stSidebar"] {
+    transform: none !important;
+    visibility: visible !important;
+    display: block !important;
+    min-width: 16rem !important;
+    width: 16rem !important;
+    margin-left: 0 !important;
+    position: relative !important;
+    left: 0 !important;
+}
+section[data-testid="stSidebar"][aria-expanded="false"] {
+    transform: none !important;
+    visibility: visible !important;
+    min-width: 16rem !important;
+    width: 16rem !important;
+    margin-left: 0 !important;
+}
+/* Hide the collapse / expand toggles – sidebar stays open */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
 /* Main background */
 .stApp {
     background: linear-gradient(160deg, #0F172A 0%, #1E293B 40%, #0F172A 100%);
