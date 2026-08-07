@@ -4,6 +4,7 @@ Version: 1.8 (Modern UI + Open registration + Admin approval + Email notificatio
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import base64
 import csv
@@ -53,6 +54,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Keep sidebar open when possible
+if "sidebar_state" not in st.session_state:
+    st.session_state.sidebar_state = "expanded"
+
+
 CUSTOM_CSS = """
 <style>
 /* ---------- Global ---------- */
@@ -62,10 +68,52 @@ html, body, [class*="css"] {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* Hide Streamlit branding */
+/* Hide Streamlit branding but KEEP sidebar toggle visible */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
-header {visibility: hidden;}
+header {
+    background: transparent !important;
+}
+/* ===== Sidebar expand/collapse – force high visibility ===== */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapsedControl"] > button,
+[data-testid="collapsedControl"] > button {
+    visibility: visible !important;
+    display: flex !important;
+    opacity: 1 !important;
+    background: #14B8A6 !important;
+    background-color: #14B8A6 !important;
+    color: #FFFFFF !important;
+    border: 2px solid #99F6E4 !important;
+    border-left: none !important;
+    border-radius: 0 12px 12px 0 !important;
+    box-shadow: 0 0 12px rgba(20, 184, 166, 0.7) !important;
+    width: 2.5rem !important;
+    height: 3rem !important;
+    z-index: 2147483647 !important;
+}
+[data-testid="collapsedControl"] svg,
+[data-testid="collapsedControl"] path,
+[data-testid="collapsedControl"] *,
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="stSidebarCollapsedControl"] path,
+[data-testid="stSidebarCollapsedControl"] * {
+    color: #FFFFFF !important;
+    fill: #FFFFFF !important;
+    stroke: #FFFFFF !important;
+    opacity: 1 !important;
+}
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="stSidebarCollapseButton"] svg,
+button[kind="headerNoPadding"] svg,
+[data-testid="stHeader"] button svg {
+    color: #5EEAD4 !important;
+    fill: #5EEAD4 !important;
+}
+[data-testid="stHeader"] {
+    background: transparent !important;
+}
 
 /* Main background */
 .stApp {
@@ -121,13 +169,27 @@ header {visibility: hidden;}
 
 /* ---------- Inputs ---------- */
 .stTextInput > div > div > input,
+.stTextArea textarea,
 .stTextArea > div > div > textarea,
 .stSelectbox > div > div {
-    background: rgba(15, 23, 42, 0.8) !important;
+    background: rgba(15, 23, 42, 0.95) !important;
     border: 1px solid rgba(148, 163, 184, 0.25) !important;
     border-radius: 10px !important;
     color: #F1F5F9 !important;
     font-size: 0.95rem !important;
+}
+.stTextArea textarea {
+    background-color: #0F172A !important;
+    color: #E2E8F0 !important;
+}
+[data-testid="stExpander"] summary {
+    background: rgba(30, 41, 59, 0.9) !important;
+    color: #E2E8F0 !important;
+    border-radius: 10px !important;
+}
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] summary span {
+    color: #E2E8F0 !important;
 }
 .stTextInput > div > div > input:focus,
 .stTextArea > div > div > textarea:focus {
@@ -300,10 +362,100 @@ hr {
     border-radius: 10px !important;
     color: #E2E8F0 !important;
 }
+
+/* Logout button in sidebar – always visible */
+[data-testid="stSidebar"] button[kind="secondary"],
+[data-testid="stSidebar"] .stButton > button {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: #FCA5A5 !important;
+    border: 1px solid rgba(239, 68, 68, 0.35) !important;
+    font-weight: 600 !important;
+    margin-top: 0.5rem !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(239, 68, 68, 0.3) !important;
+    color: #FEE2E2 !important;
+}
 </style>
 """
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# Force collapsed-sidebar toggle colors on the PARENT page (iframe alone cannot style it)
+components.html(
+    """
+<script>
+(function() {
+  var doc = window.parent.document;
+  function ensureStyle() {
+    if (doc.getElementById('fusion-toggle-style')) return;
+    var s = doc.createElement('style');
+    s.id = 'fusion-toggle-style';
+    s.textContent = `
+      [data-testid="collapsedControl"],
+      [data-testid="stSidebarCollapsedControl"],
+      [data-testid="stSidebarCollapsedControl"] button,
+      [data-testid="collapsedControl"] button {
+        background: #14B8A6 !important;
+        background-color: #14B8A6 !important;
+        color: #FFFFFF !important;
+        border: 2px solid #99F6E4 !important;
+        border-left: none !important;
+        border-radius: 0 12px 12px 0 !important;
+        box-shadow: 0 0 14px rgba(20,184,166,0.75) !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+      [data-testid="collapsedControl"] svg,
+      [data-testid="collapsedControl"] path,
+      [data-testid="collapsedControl"] *,
+      [data-testid="stSidebarCollapsedControl"] svg,
+      [data-testid="stSidebarCollapsedControl"] path,
+      [data-testid="stSidebarCollapsedControl"] * {
+        color: #FFFFFF !important;
+        fill: #FFFFFF !important;
+        stroke: #FFFFFF !important;
+        opacity: 1 !important;
+      }
+    `;
+    doc.head.appendChild(s);
+  }
+  function paint() {
+    ensureStyle();
+    var sels = [
+      '[data-testid="collapsedControl"]',
+      '[data-testid="stSidebarCollapsedControl"]',
+      '[data-testid="stSidebarCollapsedControl"] button',
+      '[data-testid="collapsedControl"] button'
+    ];
+    sels.forEach(function(sel) {
+      doc.querySelectorAll(sel).forEach(function(el) {
+        el.style.setProperty('background', '#14B8A6', 'important');
+        el.style.setProperty('background-color', '#14B8A6', 'important');
+        el.style.setProperty('color', '#FFFFFF', 'important');
+        el.style.setProperty('border', '2px solid #99F6E4', 'important');
+        el.style.setProperty('border-left', 'none', 'important');
+        el.style.setProperty('opacity', '1', 'important');
+        el.style.setProperty('visibility', 'visible', 'important');
+        el.querySelectorAll('svg, path').forEach(function(c) {
+          c.style.setProperty('fill', '#FFFFFF', 'important');
+          c.style.setProperty('color', '#FFFFFF', 'important');
+          c.style.setProperty('stroke', '#FFFFFF', 'important');
+        });
+      });
+    });
+  }
+  paint();
+  setInterval(paint, 300);
+  try {
+    new MutationObserver(paint).observe(doc.body, {childList:true, subtree:true});
+  } catch (e) {}
+})();
+</script>
+""",
+    height=0,
+    width=0,
+)
 
 # -----------------------------------------------------------------------------
 # Database
@@ -716,33 +868,51 @@ if not st.session_state.logged_in:
 # -----------------------------------------------------------------------------
 # Sidebar
 st.sidebar.markdown("""
-<div style="padding:0.5rem 0 1rem;">
+<div style="padding:0.5rem 0 0.75rem;">
   <div style="font-size:1.15rem;font-weight:700;color:#F8FAFC;">Fusion SQL Tool</div>
   <div style="font-size:0.75rem;color:#64748B;margin-top:2px;">Oracle Fusion Cloud</div>
 </div>
 """, unsafe_allow_html=True)
 
-role_badge = "Admin" if st.session_state.is_admin else "User"
+role_badge = "Admin" if st.session_state.get("is_admin") else "User"
+uname = st.session_state.get("username", "user")
 st.sidebar.markdown(
     f'<span class="fusion-badge badge-teal">{role_badge}</span> '
-    f'<span style="color:#94A3B8;font-size:0.85rem;margin-left:0.35rem;">{st.session_state.username}</span>',
+    f'<span style="color:#E2E8F0;font-size:0.9rem;margin-left:0.35rem;font-weight:600;">{uname}</span>',
     unsafe_allow_html=True
 )
+
+# Logout visible for ALL users (admin + normal)
+if st.sidebar.button("Logout", key="btn_logout", use_container_width=True):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
 st.sidebar.markdown("---")
 
 nav_options = ["SQL Query", "About"]
-if st.session_state.is_admin:
+if st.session_state.get("is_admin"):
     nav_options = ["SQL Query", "Setup BIP", "Admin", "About"]
 
 page = st.sidebar.radio("Navigate", nav_options, label_visibility="collapsed")
 
 st.sidebar.markdown("---")
-if st.sidebar.button("Sign out", use_container_width=True):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.rerun()
-
 st.sidebar.caption("v1.8")
+
+# Top bar – always show who is logged in (visible even if sidebar is collapsed)
+_uname = st.session_state.get("username", "") or "—"
+_role = "Admin" if st.session_state.get("is_admin") else "User"
+st.markdown(
+    '<div style="display:flex;justify-content:flex-end;align-items:center;gap:0.75rem;'
+    'margin-bottom:0.75rem;padding:0.35rem 0;">'
+    '<span style="color:#94A3B8;font-size:0.85rem;">Signed in as</span> '
+    '<span style="color:#F8FAFC;font-weight:700;font-size:0.95rem;">'
+    + str(_uname) +
+    '</span> '
+    '<span class="fusion-badge badge-teal">' + _role + '</span>'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 # ====================== ADMIN ======================
 if page == "Admin":
@@ -773,15 +943,30 @@ if page == "Admin":
     st.subheader("All users")
     all_users = get_all_users()
     if all_users:
-        header = "| Username | Email | Name | Status | Admin | Created |\n|---|---|---|---|---|---|\n"
-        rows_md = ""
+        html = [
+            '<div style="overflow-x:auto;border-radius:12px;border:1px solid rgba(148,163,184,0.2);">',
+            '<table class="result-table">',
+            "<tr>",
+            "<th>Username</th><th>Email</th><th>Name</th><th>Status</th><th>Admin</th><th>Created</th>",
+            "</tr>",
+        ]
         for uid, uname, email, full_name, status, is_adm, created in all_users:
-            status_label = f"**{status}**" if status == "pending" else status
-            rows_md += (
-                f"| {uname} | {email} | {full_name or '—'} | {status_label} | "
-                f"{'Yes' if is_adm else 'No'} | {str(created)[:19] if created else '—'} |\n"
-            )
-        st.markdown(header + rows_md)
+            status_color = "#FCD34D" if status == "pending" else "#86EFAC"
+            admin_txt = "Yes" if is_adm else "No"
+            created_txt = str(created)[:19] if created else "—"
+            name_txt = full_name or "—"
+            html.append("<tr>")
+            html.append(f"<td><strong>{escape(str(uname))}</strong></td>")
+            html.append(f"<td>{escape(str(email))}</td>")
+            html.append(f"<td>{escape(str(name_txt))}</td>")
+            html.append(f'<td style="color:{status_color};font-weight:600;">{escape(str(status))}</td>')
+            html.append(f"<td>{admin_txt}</td>")
+            html.append(f"<td>{escape(created_txt)}</td>")
+            html.append("</tr>")
+        html.append("</table></div>")
+        st.markdown("".join(html), unsafe_allow_html=True)
+    else:
+        st.info("No users registered yet.")
 
 # ====================== SQL QUERY ======================
 elif page == "SQL Query":
