@@ -4,7 +4,6 @@ Version: 1.8 (Modern UI + Open registration + Admin approval + Email notificatio
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 import base64
 import csv
@@ -409,7 +408,7 @@ hr {
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # Force collapsed-sidebar toggle colors on the PARENT page (iframe alone cannot style it)
-components.html(
+st.iframe(
     """
 <script>
 (function() {
