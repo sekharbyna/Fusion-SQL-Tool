@@ -41,7 +41,24 @@ BASE_DIR = Path(__file__).parent
 BIP_DIR = BASE_DIR / "bip_objects"
 DM_FILE = BIP_DIR / "DM_ARB.xdmz"
 RP_FILE = BIP_DIR / "RP_ARB.xdoz"
-DB_PATH = BASE_DIR / "users.db"
+
+# Local SQLite is wiped on Streamlit Cloud. Use DATABASE_URL (Postgres) for persistence.
+_DATA_DIR = Path.home() / ".fusion_sql_tool"
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = _DATA_DIR / "users.db"
+
+def _resolve_database_url() -> str:
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if url:
+        return url
+    try:
+        url = str(st.secrets.get("DATABASE_URL", "")).strip()
+    except Exception:
+        url = ""
+    return url
+
+DATABASE_URL = _resolve_database_url()
+USE_POSTGRES = DATABASE_URL.startswith("postgres")
 
 # -----------------------------------------------------------------------------
 # Page config + Global CSS
@@ -410,23 +427,60 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 # -----------------------------------------------------------------------------
 # Database
 # -----------------------------------------------------------------------------
+
+def get_conn():
+    """SQLite for local use, Postgres when DATABASE_URL is set."""
+    if USE_POSTGRES:
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    return sqlite3.connect(DB_PATH)
+
+
+def _sql(query: str) -> str:
+    if USE_POSTGRES:
+        return query.replace("?", "%s")
+    return query
+
+
+def _integrity_error(exc: Exception) -> bool:
+    if isinstance(exc, sqlite3.IntegrityError):
+        return True
+    name = type(exc).__name__
+    return name in ("IntegrityError", "UniqueViolation")
+
+
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            full_name TEXT,
-            status TEXT DEFAULT 'pending',
-            is_admin INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    if USE_POSTGRES:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT,
+                status TEXT DEFAULT 'pending',
+                is_admin INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    else:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT,
+                status TEXT DEFAULT 'pending',
+                is_admin INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     conn.commit()
     conn.close()
+
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -462,10 +516,10 @@ def register_user(username: str, email: str, password: str, full_name: str = "")
     status = "approved" if is_admin else "pending"
 
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_conn()
         c = conn.cursor()
         c.execute(
-            "INSERT INTO users (username, email, password_hash, full_name, status, is_admin) VALUES (?, ?, ?, ?, ?, ?)",
+            _sql("INSERT INTO users (username, email, password_hash, full_name, status, is_admin) VALUES (?, ?, ?, ?, ?, ?)"),
             (username, email, hash_password(password), full_name, status, is_admin)
         )
         conn.commit()
@@ -487,15 +541,17 @@ def register_user(username: str, email: str, password: str, full_name: str = "")
             send_email(SMTP_USER, "Fusion SQL Tool – New user pending approval", admin_body)
 
         return True, "Registration successful. Please wait for Admin approval before login."
-    except sqlite3.IntegrityError:
-        return False, "Username or Email already exists."
+    except Exception as e:
+        if _integrity_error(e):
+            return False, "Username or Email already exists."
+        return False, f"Registration failed: {e}"
 
 
 def verify_user(username: str, password: str) -> tuple:
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     c.execute(
-        "SELECT password_hash, status, is_admin, email FROM users WHERE username = ?",
+        _sql("SELECT password_hash, status, is_admin, email FROM users WHERE username = ?"),
         (username.strip().lower(),)
     )
     row = c.fetchone()
@@ -515,7 +571,7 @@ def verify_user(username: str, password: str) -> tuple:
 
 
 def get_pending_users():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     c.execute(
         "SELECT id, username, email, full_name, created_at FROM users WHERE status = 'pending' ORDER BY created_at"
@@ -526,11 +582,11 @@ def get_pending_users():
 
 
 def approve_user(user_id: int):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
-    c.execute("SELECT username, email, full_name FROM users WHERE id = ?", (user_id,))
+    c.execute(_sql("SELECT username, email, full_name FROM users WHERE id = ?"), (user_id,))
     row = c.fetchone()
-    c.execute("UPDATE users SET status = 'approved' WHERE id = ?", (user_id,))
+    c.execute(_sql("UPDATE users SET status = 'approved' WHERE id = ?"), (user_id,))
     conn.commit()
     conn.close()
 
@@ -547,7 +603,7 @@ def approve_user(user_id: int):
 
 
 def get_all_users():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     c.execute(
         "SELECT id, username, email, full_name, status, is_admin, created_at FROM users ORDER BY created_at DESC"
@@ -574,6 +630,8 @@ def show_login_page():
         """, unsafe_allow_html=True)
 
         st.markdown('<div class="fusion-card">', unsafe_allow_html=True)
+        if not USE_POSTGRES:
+            st.warning("Users are stored in a temporary file on this server. Set DATABASE_URL (Postgres) in Streamlit secrets so registration survives refreshes.")
         st.markdown("#### Sign in")
         with st.form("login_form"):
             username = st.text_input("Username", placeholder="Enter username")
